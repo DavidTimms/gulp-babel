@@ -9,6 +9,12 @@ var babel = require('babel-core');
 module.exports = function (opts) {
 	opts = opts || {};
 
+	var continueOnError = Boolean(opts.continueOnError);
+	delete opts.continueOnError;
+
+	var errorsInOutput = Boolean(opts.errorsInOutput);
+	delete opts.errorsInOutput;
+
 	return through.obj(function (file, enc, cb) {
 		if (file.isNull()) {
 			cb(null, file);
@@ -40,10 +46,31 @@ module.exports = function (opts) {
 
 			this.push(file);
 		} catch (err) {
-			this.emit('error', new gutil.PluginError('gulp-babel', err, {
-				fileName: file.path,
-				showProperties: false
-			}));
+			if (errorsInOutput) {
+				var codeFrame = err.codeFrame.replace(/\[\d+m/g, '');
+				file.contents = new Buffer(
+					'console.error(' + JSON.stringify([
+						'Babel: ' + err.name,
+						err.message,
+						codeFrame,
+					].join('\n')) + ');'
+				);
+				file.path = replaceExt(file.path, '.js');
+				this.push(file);
+			}
+
+			if (continueOnError) {
+				console.error('Babel:', err.name);
+				console.error(err.message);
+				console.error(codeFrame);
+
+				this.end();
+			} else {
+				this.emit('error', new gutil.PluginError('gulp-babel', err, {
+					fileName: file.path,
+					showProperties: false
+				}));
+			}
 		}
 
 		cb();
